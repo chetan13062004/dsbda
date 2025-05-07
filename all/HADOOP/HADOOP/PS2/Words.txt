@@ -1,0 +1,1 @@
+bus,train,car,car,train,bus,train,bus,bus,train,car

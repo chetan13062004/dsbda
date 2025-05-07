@@ -1,0 +1,63 @@
+package myPackage;
+
+import java.io.IOException;
+
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.util.GenericOptionsParser;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.io.LongWritable;
+
+public class Music {
+	public static void main(String[] args) throws IOException, ClassNotFoundException, InterruptedException{
+		Configuration c = new Configuration();
+		String files[] = new GenericOptionsParser(c, args).getRemainingArgs();
+		Path input = new Path(files[0]);
+		Path output = new Path(files[1]);
+		Job j = Job.getInstance(c, "Music");
+		j.setJarByClass(Music.class);
+		j.setMapperClass(MapForMusic.class);
+		j.setReducerClass(ReduceForMusic.class);
+		j.setOutputKeyClass(Text.class);
+		j.setOutputValueClass(Text.class);
+		FileInputFormat.addInputPath(j, input);
+		FileOutputFormat.setOutputPath(j, output);
+		System.exit(j.waitForCompletion(true)?0:1);
+	}
+	
+	public static class MapForMusic extends Mapper<LongWritable, Text, Text, Text>{
+		public void map(LongWritable key, Text value, Context con) throws IOException, InterruptedException{
+			String line = value.toString();
+			if(line.startsWith("UserId")) return;
+			String words[] = line.split(",");
+			if(words.length >= 5){
+				String trackId = words[1];
+				String radio = words[3];
+				String skip = words[4];
+				con.write(new Text(trackId), new Text(radio + "," + skip));
+			}
+		}
+	}
+	
+	public static class ReduceForMusic extends Reducer<Text, Text, Text, Text>{
+		public void reduce(Text key, Iterable<Text>values, Context con) throws IOException, InterruptedException{
+			int countRadio = 0;
+			int countSkip = 0;
+			for(Text val:values){
+				String word[] = val.toString().trim().split(",");
+				if(word.length == 2){
+					String radio = word[0];
+					String skip = word[1];
+					if(radio.equals("1")) countRadio++;
+					if(skip.equals("1")) countSkip++;
+				}
+			}
+			con.write(key, new Text(countRadio + "\t" + countSkip));
+		}
+	}
+}

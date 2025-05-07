@@ -1,0 +1,74 @@
+package myPackage;
+
+import java.io.IOException;
+import java.util.*;
+
+import org.apache.hadoop.io.*;
+import org.apache.hadoop.util.GenericOptionsParser;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.IntWritable;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+
+public class Music {
+	public static void main(String[] args) throws Exception{
+		Configuration c = new Configuration();
+		String []files = new GenericOptionsParser(c, args).getRemainingArgs();
+		Path input = new Path(files[0]);
+		Path output = new Path(files[1]);
+		Job j = Job.getInstance(c, "WordCount");
+		j.setJarByClass(Music.class);
+		j.setMapperClass(MapForMusic.class);
+		j.setReducerClass(ReduceForMusic.class);
+		j.setMapOutputKeyClass(Text.class);
+		j.setMapOutputValueClass(Text.class);
+		FileInputFormat.addInputPath(j, input);
+		FileOutputFormat.setOutputPath(j, output);
+		System.exit(j.waitForCompletion(true)?0:1);
+	}
+	
+	public static class MapForMusic extends Mapper <LongWritable, Text, Text, Text>{
+		public void map(LongWritable key, Text value, Context con) throws IOException, InterruptedException{
+			String line = value.toString();
+			if(line.startsWith("UserId")) return;
+			String[] words = line.split(",");
+			if(words.length >= 3){
+				String userId = words[0];
+				String trackId = words[1];
+				String shared = words[2];
+				con.write(new Text(trackId), new Text(userId+","+shared));
+			}
+		}
+	}
+	
+	public static class ReduceForMusic extends Reducer <Text, Text, Text, Text>{
+		private static boolean flag = true;
+		public void reduce(Text key, Iterable<Text>values, Context con) throws IOException, InterruptedException{
+			if(flag){
+				con.write(new Text("TrackID"), new Text("Unique Listener\tShared Count"));
+				flag = false;
+			}
+			HashSet<String>user = new HashSet<>();		
+			int count = 0;
+			for(Text val:values){
+				String[] words = val.toString().split(",");
+				if(words.length == 2){
+					String userId = words[0];
+					String shared = words[1];
+					user.add(userId);
+					if(shared.equals("1")){
+						count++;
+					}
+				}	
+			}
+			String result = user.size() + "\t" + count; 
+			con.write(key, new Text(result));
+		}
+	}
+}

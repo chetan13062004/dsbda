@@ -1,0 +1,72 @@
+package myPackage;
+
+import java.util.*;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.io.IOException;
+
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.mapreduce.Reducer;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+import org.apache.hadoop.util.GenericOptionsParser;
+
+public class LogFile {
+	public static void main(String[] args) throws Exception{
+		Configuration c = new Configuration();
+		String files[] = new GenericOptionsParser(c, args).getRemainingArgs();
+		Path input = new Path(files[0]);
+		Path output = new Path(files[1]);
+		Job j = Job.getInstance(c, "LogFile");
+		j.setJarByClass(LogFile.class);
+		j.setMapperClass(MapLogFile.class);
+		j.setReducerClass(ReduceLogFile.class);
+		j.setOutputKeyClass(Text.class);
+		j.setOutputValueClass(LongWritable.class);
+		FileInputFormat.addInputPath(j, input);
+		FileOutputFormat.setOutputPath(j, output);
+		System.exit(j.waitForCompletion(true)?0:1);
+	}
+	
+	public static class MapLogFile extends Mapper<LongWritable, Text, Text, LongWritable>{
+		private SimpleDateFormat format = new SimpleDateFormat("M/d/yyyy HH:mm", Locale.ENGLISH);
+		public void map(LongWritable key, Text value, Context con) throws IOException, InterruptedException{
+			String line = value.toString();
+			String words[] = line.split(",");
+			String mac = words[1];
+			String login = words[5].trim();
+			String logout = words[7].trim();
+			Date loginTime = null;
+			try {
+				loginTime = format.parse(login);
+			} catch (ParseException e1) {
+				// TODO Auto-generated catch block
+				e1.printStackTrace();
+			}
+			Date logoutTime = null;
+			try {
+				logoutTime = format.parse(logout);
+			} catch (ParseException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			long diff = (logoutTime.getTime() - loginTime.getTime())/(1000*60);
+			con.write(new Text(mac), new LongWritable(diff));
+		}
+	}
+	
+	public static class ReduceLogFile extends Reducer<Text,LongWritable, Text, LongWritable>{
+		public void reduce(Text key, Iterable<LongWritable>values, Context con) throws IOException, InterruptedException{
+			long sum = 0;
+			for(LongWritable value:values){
+				sum += value.get();
+			}
+			con.write(key, new LongWritable(sum));
+		}
+	}
+}
